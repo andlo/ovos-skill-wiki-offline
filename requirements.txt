@@ -1,0 +1,4 @@
+# No special runtime dependencies - the Level 4 Vital Articles
+# titles/summaries are bundled as static JSON (see data/), fetched
+# once via data/build_data.py (not shipped). match_one() comes from
+# ovos-utils, already a transitive dependency of ovos-workshop.
