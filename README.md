@@ -7,13 +7,17 @@ An offline alternative to `ovos-skill-wikipedia`/`ovos-skill-ddg`/
 Wikipedia "Level 4 Vital Articles" equivalent - the subjects that
 language's Wikipedia community itself has curated as the most
 essential encyclopedia entries. No internet connection needed at
-runtime. Available in English, Spanish, and French.
+runtime for the natively-supported languages. **English, Spanish, and
+French are natively supported; any other language works too via
+on-demand translation - see [Language support](#language-support)
+below.**
 
 [![Tests](https://github.com/andlo/ovos-skill-wiki-offline/actions/workflows/test.yml/badge.svg)](https://github.com/andlo/ovos-skill-wiki-offline/actions/workflows/test.yml)
 [![PyPI version](https://img.shields.io/pypi/v/ovos-skill-wiki-offline.svg)](https://pypi.org/project/ovos-skill-wiki-offline/)
 
 - [Usage](#usage)
 - [What this is (and isn't)](#what-this-is-and-isnt)
+- [Language support](#language-support)
 - [A Common Query + Fallback skill, not a fixed intent](#a-common-query--fallback-skill-not-a-fixed-intent)
 - [Data sourcing and licensing](#data-sourcing-and-licensing)
 - [Known limitations](#known-limitations)
@@ -31,6 +35,8 @@ runtime. Available in English, Spanish, and French.
 "cuéntame sobre el Tomate"        (Spanish)
 "qui était Charlie Chaplin"       (French)
 "parle-moi de la Tomate"          (French)
+"hvem var Charlie Chaplin"        (Danish, via translation - see below)
+"wer war Charlie Chaplin"         (German, via translation - see below)
 ```
 
 ## What this is (and isn't)
@@ -43,6 +49,30 @@ entities, and there's no structured data being compared here, only
 free-text extracts (some relational questions get answered by luck,
 when one entity's own summary happens to mention the other - not by
 design). See DEVELOPMENT.md for the reasoning.
+
+## Language support
+
+| Language | How | Notes |
+|---|---|---|
+| English (`en-us`) | Native, bundled data | ~10,000 topics |
+| Spanish (`es-es`) | Native, bundled data | ~6,200 topics - 3 of 11 topic categories are missing from the source list itself, see [Known limitations](#known-limitations) |
+| French (`fr-fr`) | Native, bundled data | ~10,000 topics |
+| Any other language | On-demand translation | Works automatically, no bundled data - **requires a translation plugin to be installed and configured, see below** |
+
+The natively-supported languages need nothing beyond `pip install
+ovos-skill-wiki-offline` - the data ships with the skill. For every
+other language (German and Danish included), this skill translates
+the question and answer on the fly, using whatever OVOS translation
+plugin is configured on the device - it doesn't ship or require one
+itself. Recommended:
+**[ovos-translate-plugin-nllb](https://github.com/OpenVoiceOS/ovos-translate-plugin-nllb)**,
+which runs a local NLLB-200 model (no internet connection needed once
+the model is downloaded, unlike `ovos-translate-plugin-server`, which
+calls a remote server by default). See [Install](#install) below for
+the setup steps. Translated answers take a few extra seconds
+(typically 2-5s) compared to a native-language answer - see
+DEVELOPMENT.md "Ad-hoc translation for unsupported languages" for
+measured performance and the full design reasoning.
 
 ## A Common Query + Fallback skill, not a fixed intent
 
@@ -71,14 +101,8 @@ Kiwix/ZIM, DBpedia, or Wikipedia's own larger vital-article levels:
 
 ## Known limitations
 
-- **Native, bundled data for English, Spanish, and French only** -
-  German, Danish, and any other language fall back to **ad-hoc
-  runtime translation** instead (translates the question and answer
-  on demand via whatever OVOS translation plugin the user has
-  configured, e.g. the fully-local `ovos-translate-plugin-nllb`) -
-  slower (a few extra seconds per answer) and needs a translator
-  configured, but works for any language with zero bundled data. See
-  DEVELOPMENT.md "Ad-hoc translation for unsupported languages".
+- **Non-native languages need a translation plugin configured** - see
+  [Language support](#language-support) and [Install](#install).
 - **The Spanish dataset is smaller** (~6,200 topics vs ~10,000 for
   English/French) - 3 of Spanish Wikipedia's own 11 topic categories
   (biology/health, physics, social sciences) don't actually exist as
@@ -96,9 +120,46 @@ Kiwix/ZIM, DBpedia, or Wikipedia's own larger vital-article levels:
   a strict subset), not built in v1.
 
 ## Install
+
 ```bash
 pip install ovos-skill-wiki-offline
 ```
+
+That's enough for English, Spanish, and French. **For any other
+language** (German, Danish, or anything else), also install and
+configure a translation plugin - see [Language support](#language-support)
+above for why this skill doesn't bundle one itself. Recommended,
+fully-local option:
+
+```bash
+pip install ovos-translate-plugin-nllb
+```
+
+Then add this to `~/.config/mycroft/mycroft.conf` (or wherever your
+OVOS config lives):
+
+```json
+{
+  "language": {
+    "translation_module": "ovos-translate-plugin-nllb",
+    "ovos-translate-plugin-nllb": {
+      "model": "nllb-200_600M_int8"
+    }
+  }
+}
+```
+
+Restart `ovos-core` after installing/configuring. The model
+(~600MB) downloads automatically on first use and takes roughly 40
+seconds to load the first time a translated answer is requested after
+each restart - after that it stays loaded for the rest of the
+session. Full plugin details, other model size options, and GPU
+configuration:
+**[ovos-translate-plugin-nllb on GitHub](https://github.com/OpenVoiceOS/ovos-translate-plugin-nllb)**.
+
+Any OTHER OVOS translation plugin works too, as long as
+`language.translation_module` points to it - this skill uses
+whatever's configured, generically, not specifically NLLB.
 
 ## Development
 
