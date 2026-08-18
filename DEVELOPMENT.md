@@ -331,7 +331,7 @@ in both directions.
   answer, end to end. Not instant, but reasonable for a voice
   question that would otherwise get no answer at all.
 
-### `can_answer()` and translator instantiation - two bugs caught live
+### `can_answer()` and translator instantiation - three bugs caught live
 
 `can_answer()` is called for EVERY utterance, system-wide (it's how
 `FallbackSkill` implementations respond to a broadcast "who can
@@ -376,6 +376,26 @@ competing skill's handler per query, so the cost is already being
 paid there regardless), so it attempts ad-hoc translation directly
 for any unsupported language - and benefits from the same translator
 cache, since it's shared module state.
+
+**Third bug, found while verifying the fix for the first one:** the
+fix for bug #1 made `can_answer()` call `_get_translator()` to check
+availability - correct in spirit (check availability, don't guess
+from text), but `_get_translator()` is the function that does the
+real, potentially ~40s-long model load on first use. Confirmed live:
+this made the fallback service's ping-pong round trip for this skill
+arrive long after its response window had already closed (the
+translator loaded successfully a moment later, but too late to
+matter - `ovos-skill-fallback-unknown` had already been selected
+instead). `can_answer()` needs to know "is this WORTH trying" fast,
+not "is this ACTUALLY ready right now" - those are different
+questions with very different costs to answer. Fixed with
+`_translator_configured()`: a plain `Configuration()` dict lookup for
+`language.translation_module` (fast, no plugin loading at all),
+used only in `can_answer()`. `_get_translator()` (the slow, real
+instantiation) stays reserved for `handle_fallback()` and
+`handle_common_query()`, where a several-second-to-tens-of-seconds
+wait is a reasonable cost for actually answering a question, not for
+answering the ping of "would you like to try".
 
 ## Adding another language
 

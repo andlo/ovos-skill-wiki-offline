@@ -186,6 +186,23 @@ def lookup_answer(phrase, lang):
 _translator_cache = {}  # lazy singleton - see _get_translator()
 
 
+def _translator_configured():
+    """Cheap, non-blocking check for whether the USER has a
+    translation plugin configured at all - a plain dict/config
+    lookup, no plugin loading. Deliberately separate from
+    _get_translator(): can_answer() (see below) needs to know
+    "would this be worth trying" fast, without paying the real
+    plugin's load cost (confirmed live - a first-time NLLB load
+    takes ~40s, which blocks WAY past the fallback ping-pong's
+    response window if triggered from inside can_answer() - caught
+    exactly this way during live testing, see DEVELOPMENT.md)."""
+    try:
+        from ovos_config import Configuration
+        return bool(Configuration().get("language", {}).get("translation_module"))
+    except Exception:
+        return False
+
+
 def _get_translator():
     """Lazily instantiate whatever OVOS language-translation plugin
     the user has configured, generically - not hardcoded to NLLB or
@@ -202,7 +219,11 @@ def _get_translator():
     requirement, so a broad except is intentional here (a
     misconfigured or broken translator shouldn't crash the skill,
     just mean this language isn't answerable, same as if none were
-    configured at all)."""
+    configured at all).
+
+    NOTE: this can BLOCK for tens of seconds on first call (real
+    model load) - see _translator_configured() above for the fast,
+    non-blocking alternative used in can_answer()."""
     if "translator" not in _translator_cache:
         try:
             from ovos_plugin_manager.language import OVOSLangTranslationFactory
@@ -267,27 +288,25 @@ class WikiOffline(FallbackSkill):
         """Lightweight pre-check for the fallback 'ping' broadcast -
         the real decision happens in handle_fallback() below. For
         SUPPORTED_LANGS this is the same cheap prefix check as
-        before. For any OTHER language, returns True whenever a
-        translator is configured at all, rather than trying to guess
-        from the raw text - a "?"-ending heuristic was tried first
-        and dropped: STT transcriptions routinely have NO punctuation
-        at all (confirmed live - "hvem var Charlie Chaplin" with no
-        "?" is exactly the realistic shape of a real spoken
-        utterance), so requiring one meant this skill silently never
-        got a chance for any unsupported-language question in
-        practice. The real per-utterance cost of being more
-        permissive here is bounded: `handle_fallback()` is only
-        reached at all once every higher-priority skill/intent has
-        already declined the utterance, so an occasional wasted
-        translation attempt on a genuinely unanswerable utterance is
-        an acceptable tradeoff against silently never working."""
+        before. For any OTHER language, checks _translator_configured()
+        (a fast config lookup) rather than _get_translator() (which
+        can BLOCK for ~40s on a first-time real model load) - caught
+        live: calling _get_translator() here made this skill's ping
+        response arrive long after the fallback service's response
+        window had already closed, so it was never even considered
+        as a candidate despite the translator loading successfully a
+        moment later. A "?"-ending heuristic was tried even earlier
+        than that and also dropped: real STT transcriptions routinely
+        have NO punctuation at all (confirmed live - "hvem var
+        Charlie Chaplin" with no "?" is exactly the realistic shape
+        of a real spoken utterance)."""
         utterances = message.data.get("utterances") or []
         if not utterances:
             return False
         lang = message.data.get("lang", self.lang).lower()
         if lang in SUPPORTED_LANGS:
             return _strip_question_prefix(utterances[0], lang) is not None
-        return _get_translator() is not None
+        return _translator_configured()
 
     @common_query()
     def handle_common_query(self, phrase, lang):

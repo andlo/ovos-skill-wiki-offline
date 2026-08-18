@@ -105,13 +105,11 @@ def test_can_answer_falls_back_to_skill_lang_when_missing(skill):
 
 def test_can_answer_unsupported_lang_true_when_translator_configured(skill, monkeypatch):
     """See DEVELOPMENT.md 'Ad-hoc translation for unsupported
-    languages': can_answer() returns True for any unsupported
-    language as long as a translator is configured - no attempt to
-    guess from raw text (a stricter "?"-ending heuristic was tried
-    and dropped, since real STT output routinely has no punctuation
-    at all)."""
+    languages': can_answer() checks _translator_configured() (a fast
+    config lookup) rather than _get_translator() (which can block for
+    ~40s on a first-time model load - caught live, see DEVELOPMENT.md)."""
     import wiki_offline_skill
-    monkeypatch.setattr(wiki_offline_skill, "_get_translator", lambda: object())
+    monkeypatch.setattr(wiki_offline_skill, "_translator_configured", lambda: True)
     message = MagicMock()
     message.data = {"utterances": ["wer war Charlie Chaplin"], "lang": "de-de"}
     assert skill.can_answer(message) is True
@@ -119,7 +117,7 @@ def test_can_answer_unsupported_lang_true_when_translator_configured(skill, monk
 
 def test_can_answer_unsupported_lang_false_without_translator(skill, monkeypatch):
     import wiki_offline_skill
-    monkeypatch.setattr(wiki_offline_skill, "_get_translator", lambda: None)
+    monkeypatch.setattr(wiki_offline_skill, "_translator_configured", lambda: False)
     message = MagicMock()
     message.data = {"utterances": ["wer war Charlie Chaplin"], "lang": "de-de"}
     assert skill.can_answer(message) is False
