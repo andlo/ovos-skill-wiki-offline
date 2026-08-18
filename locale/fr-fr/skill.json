@@ -1,0 +1,22 @@
+{
+  "skill_id": "ovos-skill-wiki-offline.andlo",
+  "source": "https://github.com/andlo/ovos-skill-wiki-offline",
+  "package_name": "ovos-skill-wiki-offline",
+  "pip_spec": "ovos-skill-wiki-offline",
+  "license": "GPL-3.0-or-later",
+  "author": "andlo",
+  "name": "Wiki Offline",
+  "description": "Consultation de connaissances générales hors ligne, couvrant environ 10 000 articles vitaux de Wikipédia. L'anglais, l'espagnol et le français sont natifs ; toute autre langue est traitée par traduction hors ligne. Aucune connexion internet requise.",
+  "examples": [
+    "qu'est-ce que la photosynthèse",
+    "qui était Marie Curie",
+    "parle-moi de la Tour Eiffel"
+  ],
+  "tags": [
+    "wikipedia",
+    "connaissances",
+    "hors ligne",
+    "référence"
+  ],
+  "icon": "https://raw.githubusercontent.com/andlo/ovos-skill-wiki-offline/main/icon.png"
+}
