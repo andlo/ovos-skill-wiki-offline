@@ -146,12 +146,19 @@ a different, larger project than this one, not an extension of it.
 ## English only in v1
 
 The title list and summaries are both sourced from English
-Wikipedia's own vital-articles project and REST API. Danish Wikipedia
-has its own, much smaller and differently-curated vital-articles
-list, and machine-translating ~9,000 English summaries was out of
-scope for a first version. Non-English support is a real gap, not an
-oversight - worth revisiting if there's a clean path to a comparable
-non-English data source.
+Wikipedia's own vital-articles project and REST API. Confirmed (not
+assumed) that this project is specifically English-Wikipedia-tailored
+- there's no equivalent cross-language Wikimedia initiative, and no
+confirmed comparable curated list for Danish. Two paths forward exist
+- use a target language's own Wikipedia (only viable where a
+comparable curation effort exists, which isn't confirmed for Danish)
+or machine-translate this same 10,033-title dataset (viable for any
+language, at machine-translation quality, and at a real per-language
+size cost - each language needs its own ~6MB summaries file, since
+text can't be shared across languages). See
+[issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1)
+for the full analysis. Non-English support is a real gap, not an
+oversight.
 
 ## `resolve_title()`: exact match, then "the "-stripping, then fuzzy
 
