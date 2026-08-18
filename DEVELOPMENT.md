@@ -143,22 +143,106 @@ that requires a structured facts layer (entity -> typed
 attributes like family/category, comparable programmatically) -
 a different, larger project than this one, not an extension of it.
 
-## English only in v1
+## Three languages in v1: en-us, es-es, fr-fr
 
-The title list and summaries are both sourced from English
-Wikipedia's own vital-articles project and REST API. Confirmed (not
-assumed) that this project is specifically English-Wikipedia-tailored
-- there's no equivalent cross-language Wikimedia initiative, and no
-confirmed comparable curated list for Danish. Two paths forward exist
-- use a target language's own Wikipedia (only viable where a
-comparable curation effort exists, which isn't confirmed for Danish)
-or machine-translate this same 10,033-title dataset (viable for any
-language, at machine-translation quality, and at a real per-language
-size cost - each language needs its own ~6MB summaries file, since
-text can't be shared across languages). See
+Confirmed via Wikidata's own cross-language page-mapping (not
+assumed) that Spanish and French BOTH have a native list at a
+comparable ~10,000-topic scale to English's Level 4 - unlike German
+(only a much smaller cross-wiki list) and Danish (no confirmed
+equivalent at all). See "The Spanish gap" and "Why not German or
+Danish yet" below, and
 [issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1)
-for the full analysis. Non-English support is a real gap, not an
-oversight.
+for the machine-translation approach planned for German/Danish.
+
+`data/build_data.py` now takes a language argument
+(`python3 build_data.py es-es`) and supports two title-source
+STRATEGIES per language: `"master_list"` (en-us's single bot-
+maintained page) and `"topic_subpages"` (es-es/fr-fr, which split
+their list across ~11 topic subpages instead - no single master page
+exists for these languages). Both extract the same way: raw
+`[[Article]]` wikilinks from the page's wikitext.
+
+## Interwiki links caused hangs, not clean errors
+
+A genuinely nasty bug found while fetching Spanish data: the generic
+`[[...]]` wikilink regex swept up **interwiki links** alongside real
+article titles - e.g. `[[d:Q28989]]`, a cross-reference to a Wikidata
+item, not a Spanish Wikipedia article. Requesting a REST summary for
+a title shaped like `"d:Q28989"` didn't fail cleanly (no 404, no
+exception) - it just **hung indefinitely**, with no visible cause:
+the exact same URL fetched fine in isolation (outside the actual
+fetch loop), which briefly looked like an environment-specific
+problem before the "d:Q..." pattern was spotted in the logs.
+
+Two fixes, both worth keeping even though the root cause is now
+understood: (1) `INTERWIKI_PREFIX_RE` filters out any wikilink target
+matching `^[a-z]{1,10}:` (interwiki prefixes are conventionally
+lowercase and short - `d:`, `wikt:`, `commons:`, language codes like
+`en:`/`fr:`, etc - a different convention from capitalized namespace
+prefixes like `Wikipedia:`/`Categoría:`, which were already
+filtered). (2) `with_hard_timeout()`, a `SIGALRM`-based hard backstop
+around each summary fetch - `requests`' own `timeout=` parameter
+doesn't always reliably bound DNS resolution time (a known
+urllib3/requests limitation), so a single bad title can no longer
+block the whole pipeline indefinitely regardless of the underlying
+cause. 684 interwiki-link titles were found and purged from the
+Spanish title list this way (7,315 -> 6,631 real titles) before this
+fix; the hard timeout caught a handful of other malformed titles
+(wikitext-parsing edge cases, e.g. a truncated `"G<Fuego griego"`)
+during the actual fetch.
+
+## The Spanish gap
+
+Spanish's native list (`Lista de artículos que toda Wikipedia
+debería tener/Expandida`) claims 100% completion across all 11 topic
+categories in its own index table - but 3 of those 11 subpages
+(**Biología y ciencias de la salud**, **Ciencias físicas**,
+**Sociedad y ciencias sociales**) don't exist as actual pages at all,
+confirmed via `action=query&list=allpages`, not just a broken link
+guess. The index table is simply out of sync with reality - the same
+class of issue as en-us's master-list-vs-category-tags gap, just a
+bigger one (roughly a third of the intended scope, not a couple of
+missing titles).
+
+Decision (see conversation history / project owner's call): accept
+the resulting 6,631-title, 6,239-summary Spanish dataset as-is for
+v1, documented honestly, rather than patching the 3 missing
+categories with machine-translated English content. Reasoning: mixing
+genuine Spanish Wikipedia prose (8/11 categories) with machine-
+translated English (3/11) would create an inconsistent tone
+depending on which topic gets asked about - worse than a clean,
+smaller, fully-native dataset. Concretely, this means Spanish cannot
+answer biology/health, physics, or social-science questions ("what is
+photosynthesis", "qué es la fotosíntesis") - confirmed and tested,
+see `tests/test_real_data.py::test_es_tomate_and_fotosintesis_are_the_known_gap`.
+
+Also noted in passing: part of Spanish's Tecnología category is
+explicitly marked by the Spanish Wikipedia community itself as
+untranslated content imported from Galician Wikipedia ("Traído desde
+wiki Gallega, por favor ayudar a traducir!!") - visible in the
+fetched titles as Galician spellings (e.g. "Horta froiteira",
+"Enxeñaría", "Cicel" instead of Spanish "Cincel"). Not specifically
+filtered out - these are still real, valid wikilinks that may or may
+not resolve via the Spanish REST API depending on whether a Spanish-
+language stub exists at that exact title. Left as-is rather than
+attempting to detect and reroute Galician-looking titles to Galician
+Wikipedia, which would be a disproportionate amount of complexity for
+what's a relatively small slice of one topic category.
+
+## Why not German or Danish yet
+
+German only has a smaller, differently-scoped cross-wiki list (not a
+full nested Level 1-5-equivalent structure at the ~10,000 scale);
+Danish has no confirmed equivalent at all. Using either natively
+would give a skill with much thinner, inconsistent coverage compared
+to en-us/es-es/fr-fr. Machine-translating this same title/summary
+dataset (recommended: `ovos-translate-plugin-nllb`, which runs
+locally - NOT `ovos-translate-plugin-server`, which calls a remote
+server by default and would make even this one-off data-build step
+depend on a third party's uptime) is the planned path for both - see
+[issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1)
+for the full scoping, including whether to also backfill Spanish's 3
+missing categories the same way as a smaller follow-on task.
 
 ## `resolve_title()`: exact match, then "the "-stripping, then fuzzy
 
@@ -190,11 +274,14 @@ python3 -m pytest tests/ -v
 ## Regenerating the data
 ```bash
 pip install requests
-python3 data/build_data.py
+python3 data/build_data.py en-us   # or es-es, fr-fr
 ```
 Polite, rate-limited (0.5s between requests), checkpoints every 100
 articles so an interruption doesn't lose progress - re-running resumes
-from `data/summaries.json` if it already exists.
+from `data/summaries_<lang>.json` if it already exists. A hard
+per-title timeout (see "Interwiki links caused hangs, not clean
+errors") means a single bad title gets skipped and retried on the
+next run rather than blocking the whole pipeline.
 
 ## Versioning
 `0.0.X` (patch only) until told otherwise, matching the rest of this

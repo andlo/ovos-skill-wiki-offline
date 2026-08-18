@@ -3,11 +3,11 @@
 A fully offline general-knowledge fallback for OVOS - "who was
 Charlie Chaplin", "what is the Eiffel Tower", "tell me about tomato".
 An offline alternative to `ovos-skill-wikipedia`/`ovos-skill-ddg`/
-`ovos-skill-wolfie` for the ~10,000 topics covered by Wikipedia's own
-[Level 4 Vital Articles](https://en.wikipedia.org/wiki/Wikipedia:Vital_articles/Level/4)
-list - the subjects the Wikipedia community itself has curated as
-the most essential encyclopedia entries. No internet connection
-needed at runtime.
+`ovos-skill-wolfie` for the topics covered by each language's own
+Wikipedia "Level 4 Vital Articles" equivalent - the subjects that
+language's Wikipedia community itself has curated as the most
+essential encyclopedia entries. No internet connection needed at
+runtime. Available in English, Spanish, and French.
 
 [![Tests](https://github.com/andlo/ovos-skill-wiki-offline/actions/workflows/test.yml/badge.svg)](https://github.com/andlo/ovos-skill-wiki-offline/actions/workflows/test.yml)
 [![PyPI version](https://img.shields.io/pypi/v/ovos-skill-wiki-offline.svg)](https://pypi.org/project/ovos-skill-wiki-offline/)
@@ -27,6 +27,10 @@ needed at runtime.
 "tell me about tomato"
 "what do you know about photosynthesis"
 "where is Mount Everest"
+"quién fue Charlie Chaplin"       (Spanish)
+"cuéntame sobre el Tomate"        (Spanish)
+"qui était Charlie Chaplin"       (French)
+"parle-moi de la Tomate"          (French)
 ```
 
 ## What this is (and isn't)
@@ -67,15 +71,25 @@ Kiwix/ZIM, DBpedia, or Wikipedia's own larger vital-article levels:
 
 ## Known limitations
 
-- **English only in v1** - see DEVELOPMENT.md.
+- **English, Spanish, and French only in v1** - German and Danish
+  don't have a confirmed comparable native list; machine translation
+  is the planned path for both, see
+  [issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1).
+- **The Spanish dataset is smaller** (~6,600 topics vs ~10,000 for
+  English/French) - 3 of Spanish Wikipedia's own 11 topic categories
+  (biology/health, physics, social sciences) don't actually exist as
+  pages despite the source list claiming full completion. See
+  DEVELOPMENT.md "The Spanish gap" for the full story - this means
+  Spanish can't currently answer biology, physics, or social-science
+  questions.
 - **Single-entity lookup, not relational reasoning** - see above and
   DEVELOPMENT.md.
-- **A snapshot, not a live mirror** - `data/summaries.json` reflects
-  Wikipedia as of whenever `data/build_data.py` was last run, not the
-  current live article.
-- **Scope is ~10,000 topics** (Wikipedia's Level 4 Vital Articles) -
-  Level 5 (50,000 articles) exists as a natural future extension
-  (Level 4 is a strict subset), not built in v1.
+- **A snapshot, not a live mirror** - each `data/summaries_<lang>.json`
+  reflects Wikipedia as of whenever `data/build_data.py` was last run
+  for that language, not the current live article.
+- **Scope is Level 4** (~10,000 topics for en-us/fr-fr) - Level 5
+  (50,000 articles) exists as a natural future extension (Level 4 is
+  a strict subset), not built in v1.
 
 ## Install
 ```bash

@@ -15,27 +15,68 @@ _spec.loader.exec_module(_module)
 WikiOffline = _module.WikiOffline
 
 # Small, deterministic fixture dataset - independent of whatever
-# data/build_data.py has (or hasn't) fetched on disk at test time.
-# Mirrors the real REST API shape and the exact examples verified
-# against the live API during development (see DEVELOPMENT.md).
+# data/summaries_<lang>.json has (or hasn't) fetched on disk. Mirrors
+# the real REST API shape and the exact examples verified against the
+# live API during development (see DEVELOPMENT.md). "Tomate"/
+# "Fotosíntesis" are deliberately ABSENT from es-es here too, mirroring
+# the real, documented Spanish gap (see DEVELOPMENT.md "The Spanish
+# gap") - tests rely on this absence to verify the gap is handled
+# gracefully (returns None, doesn't crash), not just to have data.
 FIXTURE_SUMMARIES = {
-    "Charlie Chaplin": {
-        "title": "Charlie Chaplin",
-        "extract": "Charlie Chaplin was an English comic actor, filmmaker, and composer who rose to fame in the era of silent film.",
-        "description": "English comic actor and filmmaker",
-        "topic": "People",
+    "en-us": {
+        "Charlie Chaplin": {
+            "title": "Charlie Chaplin",
+            "extract": "Charlie Chaplin was an English comic actor, filmmaker, and composer who rose to fame in the era of silent film.",
+            "description": "English comic actor and filmmaker",
+            "topic": "People",
+        },
+        "Eiffel Tower": {
+            "title": "Eiffel Tower",
+            "extract": "The Eiffel Tower is a lattice tower on the Champ de Mars in Paris, France.",
+            "description": "Landmark tower in Paris, France",
+            "topic": "Geography",
+        },
+        "Tomato": {
+            "title": "Tomato",
+            "extract": "The tomato is a plant whose fruit is an edible berry. It is a member of the nightshade family that includes tobacco and potato.",
+            "description": "Edible berry, culinary vegetable",
+            "topic": "Biology and health sciences",
+        },
     },
-    "Eiffel Tower": {
-        "title": "Eiffel Tower",
-        "extract": "The Eiffel Tower is a lattice tower on the Champ de Mars in Paris, France.",
-        "description": "Landmark tower in Paris, France",
-        "topic": "Geography",
+    "es-es": {
+        "Charlie Chaplin": {
+            "title": "Charlie Chaplin",
+            "extract": "Charles Spencer Chaplin fue un actor cómico, cineasta y compositor inglés que alcanzó la fama en la era del cine mudo.",
+            "description": "Actor cómico y cineasta inglés",
+            "topic": "Personas",
+        },
+        "Torre Eiffel": {
+            "title": "Torre Eiffel",
+            "extract": "La torre Eiffel es una estructura de hierro situada en el Campo de Marte, en París, Francia.",
+            "description": "Estructura emblemática en París",
+            "topic": "Geografía",
+        },
+        # Tomate/Fotosíntesis deliberately absent - see docstring above
     },
-    "Tomato": {
-        "title": "Tomato",
-        "extract": "The tomato is a plant whose fruit is an edible berry. It is a member of the nightshade family that includes tobacco and potato.",
-        "description": "Edible berry, culinary vegetable",
-        "topic": "Biology and health sciences",
+    "fr-fr": {
+        "Charlie Chaplin": {
+            "title": "Charlie Chaplin",
+            "extract": "Charlie Chaplin est un acteur, réalisateur et compositeur britannique, né en 1889 à Londres.",
+            "description": "Acteur et réalisateur britannique",
+            "topic": "Personnalités",
+        },
+        "Tour Eiffel": {
+            "title": "Tour Eiffel",
+            "extract": "La tour Eiffel est une tour de fer puddlé située à Paris, à l'extrémité du parc du Champ-de-Mars.",
+            "description": "Tour emblématique à Paris",
+            "topic": "Géographie",
+        },
+        "Tomate": {
+            "title": "Tomate",
+            "extract": "La tomate est une espèce de plantes herbacées de la famille des Solanacées, originaire du Mexique.",
+            "description": "Légume-fruit",
+            "topic": "Science",
+        },
     },
 }
 
@@ -52,10 +93,14 @@ def skill(monkeypatch):
     s._lang_resources = {}
 
     # Point the module-level data at our small fixture set, not
-    # whatever data/summaries.json actually contains on disk.
-    monkeypatch.setattr(_module, "SUMMARIES", FIXTURE_SUMMARIES)
-    title_index = {t.lower(): t for t in FIXTURE_SUMMARIES}
-    monkeypatch.setattr(_module, "TITLE_INDEX", title_index)
-    monkeypatch.setattr(_module, "ALL_TITLES_LOWER", list(title_index.keys()))
+    # whatever data/summaries_<lang>.json actually contains on disk.
+    monkeypatch.setattr(_module, "SUMMARIES_BY_LANG", FIXTURE_SUMMARIES)
+    title_index = {
+        lang: {t.lower(): t for t in summaries}
+        for lang, summaries in FIXTURE_SUMMARIES.items()
+    }
+    monkeypatch.setattr(_module, "TITLE_INDEX_BY_LANG", title_index)
+    monkeypatch.setattr(_module, "ALL_TITLES_LOWER_BY_LANG",
+                        {lang: list(idx.keys()) for lang, idx in title_index.items()})
 
     return s

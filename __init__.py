@@ -34,12 +34,16 @@ This is an ENCYCLOPEDIA LOOKUP, not a reasoning engine: it can answer
 potatoes related" (a comparison across two entities) - see
 DEVELOPMENT.md "Single-entity lookup, not relational reasoning".
 
-English only in v1 - the underlying data is sourced from English
-Wikipedia's own vital-articles list and REST summary API; there is
-no equivalent bundled data for other languages yet (Danish Wikipedia
-has a different, much smaller vital-articles set, and machine-
-translating ~9,000 English summaries was out of scope for v1 - see
-DEVELOPMENT.md "English only in v1").
+English, Spanish, and French in v1 - the underlying data is sourced
+from each language's own Wikipedia vital-articles list/REST summary
+API. Spanish is a real, partial exception - 3 of the native list's 11
+topic categories (Biology and health sciences, Physical sciences,
+Society and social sciences) don't exist as actual pages despite the
+index table claiming 100% completion - see DEVELOPMENT.md "The
+Spanish gap" and CREDITS.md. German and Danish are NOT covered - see
+DEVELOPMENT.md "Why not German or Danish yet" and
+github.com/andlo/ovos-skill-wiki-offline/issues/1 for the machine-
+translation approach planned for those two instead.
 """
 import json
 import re
@@ -54,75 +58,113 @@ DATA_DIR = SKILL_ROOT / "data"
 
 FUZZY_MATCH_THRESHOLD = 0.85
 
+SUPPORTED_LANGS = ("en-us", "es-es", "fr-fr")
 
-def _load_summaries():
-    path = DATA_DIR / "summaries.json"
+
+def _load_summaries(lang):
+    path = DATA_DIR / f"summaries_{lang}.json"
     if not path.exists():
         return {}
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-# title -> {title, extract, description, topic}
-SUMMARIES = _load_summaries()
-# lowercased title -> canonical title, for exact lookup
-TITLE_INDEX = {title.lower(): title for title in SUMMARIES}
-ALL_TITLES_LOWER = list(TITLE_INDEX.keys())
+# lang -> {title -> {title, extract, description, topic}}
+SUMMARIES_BY_LANG = {lang: _load_summaries(lang) for lang in SUPPORTED_LANGS}
+# lang -> {lowercased title -> canonical title}
+TITLE_INDEX_BY_LANG = {
+    lang: {title.lower(): title for title in summaries}
+    for lang, summaries in SUMMARIES_BY_LANG.items()
+}
+ALL_TITLES_LOWER_BY_LANG = {
+    lang: list(index.keys()) for lang, index in TITLE_INDEX_BY_LANG.items()
+}
 
 # Deliberately simple substring prefixes, not full NLU - a safety
 # net / fallback catch, not a second implementation of intent
 # parsing. See DEVELOPMENT.md.
-QUESTION_PREFIXES = [
-    "who is ", "who was ", "who's ",
-    "what is ", "what's ", "what are ",
-    "where is ", "where's ", "where are ",
-    "tell me about ", "what do you know about ",
-]
+QUESTION_PREFIXES = {
+    "en-us": [
+        "who is ", "who was ", "who's ",
+        "what is ", "what's ", "what are ",
+        "where is ", "where's ", "where are ",
+        "tell me about ", "what do you know about ",
+    ],
+    "es-es": [
+        "quién es ", "quién fue ", "quiénes son ",
+        "qué es ", "qué son ",
+        "dónde está ", "dónde están ", "dónde queda ",
+        "cuéntame sobre ", "háblame de ", "háblame sobre ",
+        "qué sabes sobre ", "qué sabes de ",
+    ],
+    "fr-fr": [
+        "qui est ", "qui était ", "qui sont ",
+        "qu'est-ce que ", "qu'est-ce qu'", "qu'est-ce qui est ",
+        "où est ", "où se trouve ", "où sont ",
+        "parle-moi de ", "parle-moi du ", "parle-moi des ",
+        "que sais-tu sur ", "que sais-tu de ",
+    ],
+}
+
+# Leading articles stripped before an exact-match retry, per language
+# (see resolve_title()'s "the "-stripping - same idea, but Spanish/
+# French have gendered/plural articles English doesn't).
+LEADING_ARTICLES = {
+    "en-us": ["the "],
+    "es-es": ["el ", "la ", "los ", "las "],
+    "fr-fr": ["le ", "la ", "les ", "l'"],
+}
 
 
-def _strip_question_prefix(phrase):
+def _strip_question_prefix(phrase, lang):
     """Returns the subject after a recognized question prefix, or
-    None if the phrase doesn't start with one of ours."""
+    None if the phrase doesn't start with one of ours for this
+    language."""
     stripped = phrase.strip().rstrip("?").strip()
     lower = stripped.lower()
-    for prefix in QUESTION_PREFIXES:
+    for prefix in QUESTION_PREFIXES.get(lang, []):
         if lower.startswith(prefix):
             return stripped[len(prefix):].strip()
     return None
 
 
-def resolve_title(subject):
+def resolve_title(subject, lang):
     """Exact match first (case-insensitive, with/without a leading
-    'the'), then a fuzzy match against all ~9,000 titles as a
+    article), then a fuzzy match against this language's titles as a
     fallback for minor STT variation. Returns a canonical title key
-    into SUMMARIES, or None."""
-    if not subject:
+    into SUMMARIES_BY_LANG[lang], or None."""
+    if not subject or lang not in SUMMARIES_BY_LANG:
         return None
+    title_index = TITLE_INDEX_BY_LANG[lang]
     key = subject.strip().lower()
-    if key in TITLE_INDEX:
-        return TITLE_INDEX[key]
-    if key.startswith("the "):
-        stripped_key = key[4:]
-        if stripped_key in TITLE_INDEX:
-            return TITLE_INDEX[stripped_key]
-    match, score = match_one(key, ALL_TITLES_LOWER)
+    if key in title_index:
+        return title_index[key]
+    for article in LEADING_ARTICLES.get(lang, []):
+        if key.startswith(article):
+            stripped_key = key[len(article):]
+            if stripped_key in title_index:
+                return title_index[stripped_key]
+    all_titles = ALL_TITLES_LOWER_BY_LANG.get(lang, [])
+    if not all_titles:
+        return None
+    match, score = match_one(key, all_titles)
     if score >= FUZZY_MATCH_THRESHOLD:
-        return TITLE_INDEX[match]
+        return title_index[match]
     return None
 
 
-def lookup_answer(phrase):
+def lookup_answer(phrase, lang):
     """Full pipeline: strip a question prefix, resolve the remaining
-    subject against the title index, return the short spoken answer
-    (str) or None. Shared by both the Common Query and fallback
-    entry points below - one implementation, two triggers."""
-    subject = _strip_question_prefix(phrase)
+    subject against this language's title index, return the short
+    spoken answer (str) or None. Shared by both the Common Query and
+    fallback entry points below - one implementation, two triggers."""
+    subject = _strip_question_prefix(phrase, lang)
     if subject is None:
         return None
-    title = resolve_title(subject)
+    title = resolve_title(subject, lang)
     if title is None:
         return None
-    return SUMMARIES[title]["extract"]
+    return SUMMARIES_BY_LANG[lang][title]["extract"]
 
 
 class WikiOffline(FallbackSkill):
@@ -143,7 +185,8 @@ class WikiOffline(FallbackSkill):
         utterances = message.data.get("utterances") or []
         if not utterances:
             return False
-        return _strip_question_prefix(utterances[0]) is not None
+        lang = message.data.get("lang", self.lang).lower()
+        return _strip_question_prefix(utterances[0], lang) is not None
 
     @common_query()
     def handle_common_query(self, phrase, lang):
@@ -152,9 +195,10 @@ class WikiOffline(FallbackSkill):
         Wolfram when the platform's own routing (including the m2v
         misrouting documented in ovos-skill-geometry's DEVELOPMENT.md)
         sends a question to Common Query."""
-        if lang.lower() != "en-us":
+        lang = lang.lower()
+        if lang not in SUPPORTED_LANGS:
             return None
-        answer = lookup_answer(phrase)
+        answer = lookup_answer(phrase, lang)
         if answer is None:
             return None
         return answer, 0.8
@@ -169,7 +213,8 @@ class WikiOffline(FallbackSkill):
         utterances = message.data.get("utterances") or []
         if not utterances:
             return False
-        answer = lookup_answer(utterances[0])
+        lang = message.data.get("lang", self.lang).lower()
+        answer = lookup_answer(utterances[0], lang)
         if answer is None:
             return False
         self.speak(answer)
