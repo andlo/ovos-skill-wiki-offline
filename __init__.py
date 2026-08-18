@@ -183,20 +183,33 @@ def lookup_answer(phrase, lang):
     return SUMMARIES_BY_LANG[lang][title]["extract"]
 
 
+_translator_cache = {}  # lazy singleton - see _get_translator()
+
+
 def _get_translator():
     """Lazily instantiate whatever OVOS language-translation plugin
     the user has configured, generically - not hardcoded to NLLB or
-    any specific plugin. Returns None if none is configured or it
-    fails to load for any reason; this is a best-effort fallback, not
-    a hard requirement, so a broad except is intentional here (a
+    any specific plugin. Cached after the first successful call:
+    can_answer() and handle_fallback()/handle_common_query() can all
+    call this for the SAME incoming question (once to check
+    availability, once to actually translate), and re-instantiating a
+    translator plugin from scratch each time risks reloading model
+    weights from disk repeatedly (confirmed the underlying NLLB model
+    takes ~40s to load - see DEVELOPMENT.md) - a single cached
+    instance avoids paying that cost more than once per skill
+    lifetime. Returns None if none is configured or it fails to load
+    for any reason; this is a best-effort fallback, not a hard
+    requirement, so a broad except is intentional here (a
     misconfigured or broken translator shouldn't crash the skill,
     just mean this language isn't answerable, same as if none were
     configured at all)."""
-    try:
-        from ovos_plugin_manager.language import OVOSLangTranslationFactory
-        return OVOSLangTranslationFactory.create()
-    except Exception:
-        return None
+    if "translator" not in _translator_cache:
+        try:
+            from ovos_plugin_manager.language import OVOSLangTranslationFactory
+            _translator_cache["translator"] = OVOSLangTranslationFactory.create()
+        except Exception:
+            _translator_cache["translator"] = None
+    return _translator_cache["translator"]
 
 
 def _translate_text(translator, text, target, source):
@@ -254,21 +267,27 @@ class WikiOffline(FallbackSkill):
         """Lightweight pre-check for the fallback 'ping' broadcast -
         the real decision happens in handle_fallback() below. For
         SUPPORTED_LANGS this is the same cheap prefix check as
-        before. For any OTHER language, deliberately does NOT
-        attempt a translation here - can_answer() is called for
-        EVERY utterance system-wide (it's a broadcast ping every
-        fallback skill responds to), so doing a translation round-
-        trip here would add latency to unrelated utterances too. A
-        bare '?' is used as a weak, free signal instead; the real
-        (translation-based) check only runs in handle_fallback(),
-        gated behind having passed this cheap filter first."""
+        before. For any OTHER language, returns True whenever a
+        translator is configured at all, rather than trying to guess
+        from the raw text - a "?"-ending heuristic was tried first
+        and dropped: STT transcriptions routinely have NO punctuation
+        at all (confirmed live - "hvem var Charlie Chaplin" with no
+        "?" is exactly the realistic shape of a real spoken
+        utterance), so requiring one meant this skill silently never
+        got a chance for any unsupported-language question in
+        practice. The real per-utterance cost of being more
+        permissive here is bounded: `handle_fallback()` is only
+        reached at all once every higher-priority skill/intent has
+        already declined the utterance, so an occasional wasted
+        translation attempt on a genuinely unanswerable utterance is
+        an acceptable tradeoff against silently never working."""
         utterances = message.data.get("utterances") or []
         if not utterances:
             return False
         lang = message.data.get("lang", self.lang).lower()
         if lang in SUPPORTED_LANGS:
             return _strip_question_prefix(utterances[0], lang) is not None
-        return utterances[0].strip().endswith("?")
+        return _get_translator() is not None
 
     @common_query()
     def handle_common_query(self, phrase, lang):

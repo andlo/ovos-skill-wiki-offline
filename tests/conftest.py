@@ -103,4 +103,9 @@ def skill(monkeypatch):
     monkeypatch.setattr(_module, "ALL_TITLES_LOWER_BY_LANG",
                         {lang: list(idx.keys()) for lang, idx in title_index.items()})
 
+    # _get_translator() caches its result across calls (see its own
+    # docstring for why) - reset that cache per test so one test's
+    # translator (real or mocked) can't leak into another.
+    monkeypatch.setattr(_module, "_translator_cache", {})
+
     return s

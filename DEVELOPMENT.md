@@ -331,22 +331,51 @@ in both directions.
   answer, end to end. Not instant, but reasonable for a voice
   question that would otherwise get no answer at all.
 
-### `can_answer()` deliberately does NOT translate
+### `can_answer()` and translator instantiation - two bugs caught live
 
 `can_answer()` is called for EVERY utterance, system-wide (it's how
 `FallbackSkill` implementations respond to a broadcast "who can
-handle this" ping) - doing a translation round-trip there would add
-several seconds of latency to every single utterance on the device,
-not just the ones this skill is actually relevant to. For
-`SUPPORTED_LANGS`, `can_answer()` keeps using the existing free
-prefix-string check. For any other language, it falls back to a
-much weaker but free heuristic (does the utterance end in "?") - the
-real, translation-based check only happens in `handle_fallback()`,
-which is gated behind having passed this cheap filter first.
-`handle_common_query()` doesn't have this constraint (Common Query
-already invokes every competing skill's handler per query, so the
-cost is already being paid there regardless), so it attempts ad-hoc
-translation directly for any unsupported language.
+handle this" ping). For `SUPPORTED_LANGS` it keeps using the existing
+free prefix-string check. For any other language, the first version
+of this used a free heuristic instead of translating (to avoid adding
+latency to every utterance on the device): did the utterance end in
+"?".
+
+**That heuristic was wrong, caught by testing live on real hardware,
+not just unit tests:** real STT transcriptions routinely have NO
+punctuation at all. `"hvem var Charlie Chaplin"` (the actual shape of
+a real spoken Danish question, tested live) has no trailing "?", so
+`can_answer()` returned `False` every time and this skill silently
+never got a chance to answer ANY unsupported-language question in
+practice - it worked in isolated testing (where I was typing
+punctuated example phrases) and failed completely for real usage.
+
+Fixed by checking translator AVAILABILITY instead of guessing from
+text shape: `can_answer()` returns `True` for any unsupported
+language whenever `_get_translator()` finds one configured, full
+stop. The real per-utterance cost of being this permissive is bounded
+- `handle_fallback()` (where the actual translation work happens) is
+only reached at all once every higher-priority skill/intent has
+already declined the utterance, so an occasional wasted translation
+attempt on something that turns out unanswerable is an acceptable
+tradeoff against silently not working.
+
+**Second bug, found while fixing the first:** `can_answer()` and
+`handle_fallback()` can both run for the SAME incoming question (the
+ping, then the real handling), and each was calling `_get_translator()`
+independently - risking reloading the underlying model from disk
+TWICE per question if the plugin doesn't cache internally (confirmed
+the model takes ~40s to load - see "Measured performance" above).
+Fixed with `_translator_cache`, a lazy module-level singleton:
+`_get_translator()` only ever instantiates a translator once per
+skill lifetime, not once per call.
+
+`handle_common_query()` doesn't have the same system-wide-ping-cost
+constraint `can_answer()` does (Common Query already invokes every
+competing skill's handler per query, so the cost is already being
+paid there regardless), so it attempts ad-hoc translation directly
+for any unsupported language - and benefits from the same translator
+cache, since it's shared module state.
 
 ## Adding another language
 

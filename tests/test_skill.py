@@ -103,20 +103,25 @@ def test_can_answer_falls_back_to_skill_lang_when_missing(skill):
     assert skill.can_answer(message) is True
 
 
-def test_can_answer_unsupported_lang_true_for_question_mark(skill):
+def test_can_answer_unsupported_lang_true_when_translator_configured(skill, monkeypatch):
     """See DEVELOPMENT.md 'Ad-hoc translation for unsupported
-    languages': can_answer() deliberately uses a cheap '?'-ending
-    heuristic for languages outside SUPPORTED_LANGS rather than
-    attempting a translation here, since this is called for every
-    utterance system-wide."""
+    languages': can_answer() returns True for any unsupported
+    language as long as a translator is configured - no attempt to
+    guess from raw text (a stricter "?"-ending heuristic was tried
+    and dropped, since real STT output routinely has no punctuation
+    at all)."""
+    import wiki_offline_skill
+    monkeypatch.setattr(wiki_offline_skill, "_get_translator", lambda: object())
     message = MagicMock()
-    message.data = {"utterances": ["wer war Charlie Chaplin?"], "lang": "de-de"}
+    message.data = {"utterances": ["wer war Charlie Chaplin"], "lang": "de-de"}
     assert skill.can_answer(message) is True
 
 
-def test_can_answer_unsupported_lang_false_without_question_mark(skill):
+def test_can_answer_unsupported_lang_false_without_translator(skill, monkeypatch):
+    import wiki_offline_skill
+    monkeypatch.setattr(wiki_offline_skill, "_get_translator", lambda: None)
     message = MagicMock()
-    message.data = {"utterances": ["spiel etwas Musik"], "lang": "de-de"}
+    message.data = {"utterances": ["wer war Charlie Chaplin"], "lang": "de-de"}
     assert skill.can_answer(message) is False
 
 
