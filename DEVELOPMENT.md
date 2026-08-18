@@ -191,6 +191,36 @@ fix; the hard timeout caught a handful of other malformed titles
 (wikitext-parsing edge cases, e.g. a truncated `"G<Fuego griego"`)
 during the actual fetch.
 
+**A second interwiki spelling, missed by the first fix**: French's
+list contains links like `[[:en:Alcohol (drug)]]` - a *leading
+colon* before the language code. That leading colon is standard
+MediaWiki syntax for suppressing an interwiki link's special
+rendering behavior (so it displays as a normal inline link instead of
+being swept into the page's language-link sidebar), but the target is
+exactly as much an interwiki link as the unprefixed form - `"en:Alcohol
+(drug)"` is never a real fr.wikipedia.org title. `INTERWIKI_PREFIX_RE`
+originally anchored on `^[a-z]{1,10}:`, which doesn't match a string
+starting with `:`, so these 29 titles slipped through the filter and
+hit the *hard-timeout* path on every single run - not a one-off, a
+**permanent per-run stall** (25s x 29 titles = ~12 minutes wasted every
+time `build_data.py fr-fr` was invoked), since a hard timeout doesn't
+mean "give up on this title forever," it means "give up on this run's
+attempt, retry next time." Fixed by widening the regex to `^:?[a-z]
+{1,10}:`. The pre-existing 29 contaminated titles were purged directly
+from `titles_fr-fr.json` (regenerating from scratch wasn't needed -
+the fix only affects extraction of *new* titles, so existing files
+had to be cleaned by hand once). A further 4 French titles
+(`Selena (chanteuse)`, `Lieu de culte` - empty extract, likely
+disambiguation pages; `Droits et libertés`, `Solenopsis (fourmi)` -
+clean 404, likely renamed/merged articles) were confirmed genuinely
+unresolvable via direct API checks and purged the same way - the
+same category of small, permanent long-tail gap as "The Spanish gap"
+below, just far smaller in French's case (4 titles vs. Spanish's
+~392). `titles_fr-fr.json` and `titles_es-es.json` are now kept in
+sync 1:1 with their corresponding `summaries_*.json` - every title
+in the file is answerable, rather than including known-dead titles
+that silently do nothing at runtime.
+
 ## The Spanish gap
 
 Spanish's native list (`Lista de artículos que toda Wikipedia

@@ -94,7 +94,19 @@ EXCLUDED_PREFIXES = ("Wikipedia:", "Wikipédia:", "Categoría:", "Catégorie:",
 # swept up by the generic [[...]] wikilink regex) sent to the REST summary
 # API caused unpredictable hangs rather than a clean 404 - see
 # DEVELOPMENT.md "Interwiki links caused hangs, not clean errors".
-INTERWIKI_PREFIX_RE = re.compile(r"^[a-z]{1,10}:")
+#
+# A LEADING COLON (":en:Alcohol (drug)") is a second, equally common
+# form of the same thing: MediaWiki syntax for suppressing an
+# interwiki/category link's special behavior in rendering, but the
+# target is still just as much an interwiki link - "en:Alcohol
+# (drug)" is not a real fr.wikipedia.org article and will never
+# resolve via that domain's REST summary API. Caught the hard way,
+# again: 33 French titles all of this exact ":xx:..." shape hung the
+# build in a permanent per-run timeout loop, one HARD TIMEOUT per
+# title per run, forever - not a transient fetch failure that a
+# re-run would clear. The `:?` below is the fix - same interwiki
+# check, just also matching the colon-prefixed spelling.
+INTERWIKI_PREFIX_RE = re.compile(r"^:?[a-z]{1,10}:")
 
 LANG_CONFIGS = {
     "en-us": {
