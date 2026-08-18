@@ -40,10 +40,23 @@ API. Spanish is a real, partial exception - 3 of the native list's 11
 topic categories (Biology and health sciences, Physical sciences,
 Society and social sciences) don't exist as actual pages despite the
 index table claiming 100% completion - see DEVELOPMENT.md "The
-Spanish gap" and CREDITS.md. German and Danish are NOT covered - see
-DEVELOPMENT.md "Why not German or Danish yet" and
-github.com/andlo/ovos-skill-wiki-offline/issues/1 for the machine-
-translation approach planned for those two instead.
+Spanish gap" and CREDITS.md.
+
+German, Danish, and any OTHER language not in SUPPORTED_LANGS fall
+back to AD-HOC RUNTIME TRANSLATION instead of a bundled dataset - see
+DEVELOPMENT.md "Ad-hoc translation for unsupported languages" for the
+full reasoning (this replaced an earlier plan to pre-translate and
+bundle static German/Danish datasets like the native ones - ad-hoc
+translation turned out to be strictly better: it works for ANY
+language the user has a translator configured for, not just two,
+translates only what's actually asked about instead of ~10,000
+topics nobody may ever ask for, and adds no bundled data at all).
+This only activates if the user has SOME OVOS language-translation
+plugin configured (checked generically via
+`ovos_plugin_manager.language.OVOSLangTranslationFactory` - not
+hardcoded to any specific plugin); if none is configured, this skill
+simply doesn't answer for that language, same as any other unanswered
+question.
 """
 import json
 import re
@@ -59,6 +72,9 @@ DATA_DIR = SKILL_ROOT / "data"
 FUZZY_MATCH_THRESHOLD = 0.85
 
 SUPPORTED_LANGS = ("en-us", "es-es", "fr-fr")
+TRANSLATION_PIVOT_LANG = "en-us"
+
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 def _load_summaries(lang):
@@ -167,6 +183,63 @@ def lookup_answer(phrase, lang):
     return SUMMARIES_BY_LANG[lang][title]["extract"]
 
 
+def _get_translator():
+    """Lazily instantiate whatever OVOS language-translation plugin
+    the user has configured, generically - not hardcoded to NLLB or
+    any specific plugin. Returns None if none is configured or it
+    fails to load for any reason; this is a best-effort fallback, not
+    a hard requirement, so a broad except is intentional here (a
+    misconfigured or broken translator shouldn't crash the skill,
+    just mean this language isn't answerable, same as if none were
+    configured at all)."""
+    try:
+        from ovos_plugin_manager.language import OVOSLangTranslationFactory
+        return OVOSLangTranslationFactory.create()
+    except Exception:
+        return None
+
+
+def _translate_text(translator, text, target, source):
+    """Sentence-split before translating, then rejoin - NLLB (and
+    likely other MT plugins with similar length limits) silently
+    TRUNCATES a multi-sentence string to just its first sentence
+    rather than erroring, confirmed by hand during development (see
+    DEVELOPMENT.md). Splitting per-sentence and rejoining avoids
+    losing everything after the first sentence of a summary."""
+    sentences = SENTENCE_SPLIT_RE.split(text.strip())
+    translated = [translator.translate(s, target, source) for s in sentences]
+    return " ".join(translated)
+
+
+def lookup_answer_via_translation(phrase, lang, translator=None):
+    """Fallback for languages NOT in SUPPORTED_LANGS: translate the
+    whole phrase to the pivot language (en-us, our largest and most
+    complete dataset), run it through the exact same lookup_answer()
+    pipeline English already uses (no separate per-language prefix
+    list needed for arbitrary languages this way), then translate the
+    matched English answer back. Returns None at any step that fails
+    or comes up empty - same "silently doesn't answer" contract as
+    lookup_answer(). `translator` can be passed in (e.g. a cached
+    instance) to avoid re-instantiating one per call; if omitted,
+    a fresh one is created via _get_translator()."""
+    if lang in SUPPORTED_LANGS:
+        return None
+    translator = translator or _get_translator()
+    if translator is None:
+        return None
+    try:
+        english_phrase = translator.translate(phrase, TRANSLATION_PIVOT_LANG, lang)
+    except Exception:
+        return None
+    english_answer = lookup_answer(english_phrase, TRANSLATION_PIVOT_LANG)
+    if english_answer is None:
+        return None
+    try:
+        return _translate_text(translator, english_answer, lang, TRANSLATION_PIVOT_LANG)
+    except Exception:
+        return None
+
+
 class WikiOffline(FallbackSkill):
     """Deliberately extends FallbackSkill (not plain OVOSSkill) - the
     @fallback_handler decorator only auto-registers on this base
@@ -179,14 +252,23 @@ class WikiOffline(FallbackSkill):
 
     def can_answer(self, message):
         """Lightweight pre-check for the fallback 'ping' broadcast -
-        the real decision happens in handle_fallback() below, this
-        just avoids answering 'yes' to utterances that obviously
-        aren't questions at all."""
+        the real decision happens in handle_fallback() below. For
+        SUPPORTED_LANGS this is the same cheap prefix check as
+        before. For any OTHER language, deliberately does NOT
+        attempt a translation here - can_answer() is called for
+        EVERY utterance system-wide (it's a broadcast ping every
+        fallback skill responds to), so doing a translation round-
+        trip here would add latency to unrelated utterances too. A
+        bare '?' is used as a weak, free signal instead; the real
+        (translation-based) check only runs in handle_fallback(),
+        gated behind having passed this cheap filter first."""
         utterances = message.data.get("utterances") or []
         if not utterances:
             return False
         lang = message.data.get("lang", self.lang).lower()
-        return _strip_question_prefix(utterances[0], lang) is not None
+        if lang in SUPPORTED_LANGS:
+            return _strip_question_prefix(utterances[0], lang) is not None
+        return utterances[0].strip().endswith("?")
 
     @common_query()
     def handle_common_query(self, phrase, lang):
@@ -194,11 +276,16 @@ class WikiOffline(FallbackSkill):
         lets the skill compete on equal footing with Wikipedia/DDG/
         Wolfram when the platform's own routing (including the m2v
         misrouting documented in ovos-skill-geometry's DEVELOPMENT.md)
-        sends a question to Common Query."""
+        sends a question to Common Query. Common Query doesn't have
+        the same system-wide-ping cost concern can_answer() does
+        (competing skills' handlers are already invoked per query),
+        so attempting ad-hoc translation here for unsupported
+        languages is fine."""
         lang = lang.lower()
-        if lang not in SUPPORTED_LANGS:
-            return None
-        answer = lookup_answer(phrase, lang)
+        if lang in SUPPORTED_LANGS:
+            answer = lookup_answer(phrase, lang)
+        else:
+            answer = lookup_answer_via_translation(phrase, lang)
         if answer is None:
             return None
         return answer, 0.8
@@ -214,7 +301,10 @@ class WikiOffline(FallbackSkill):
         if not utterances:
             return False
         lang = message.data.get("lang", self.lang).lower()
-        answer = lookup_answer(utterances[0], lang)
+        if lang in SUPPORTED_LANGS:
+            answer = lookup_answer(utterances[0], lang)
+        else:
+            answer = lookup_answer_via_translation(utterances[0], lang)
         if answer is None:
             return False
         self.speak(answer)

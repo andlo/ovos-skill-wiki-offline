@@ -71,11 +71,15 @@ Kiwix/ZIM, DBpedia, or Wikipedia's own larger vital-article levels:
 
 ## Known limitations
 
-- **English, Spanish, and French only in v1** - German and Danish
-  don't have a confirmed comparable native list; machine translation
-  is the planned path for both, see
-  [issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1).
-- **The Spanish dataset is smaller** (~6,600 topics vs ~10,000 for
+- **Native, bundled data for English, Spanish, and French only** -
+  German, Danish, and any other language fall back to **ad-hoc
+  runtime translation** instead (translates the question and answer
+  on demand via whatever OVOS translation plugin the user has
+  configured, e.g. the fully-local `ovos-translate-plugin-nllb`) -
+  slower (a few extra seconds per answer) and needs a translator
+  configured, but works for any language with zero bundled data. See
+  DEVELOPMENT.md "Ad-hoc translation for unsupported languages".
+- **The Spanish dataset is smaller** (~6,200 topics vs ~10,000 for
   English/French) - 3 of Spanish Wikipedia's own 11 topic categories
   (biology/health, physics, social sciences) don't actually exist as
   pages despite the source list claiming full completion. See

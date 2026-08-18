@@ -2,3 +2,11 @@
 # titles/summaries are bundled as static JSON (see data/), fetched
 # once via data/build_data.py (not shipped). match_one() comes from
 # ovos-utils, already a transitive dependency of ovos-workshop.
+#
+# Ad-hoc translation for languages outside SUPPORTED_LANGS (see
+# DEVELOPMENT.md) uses ovos_plugin_manager.language, itself already a
+# transitive dependency of ovos-workshop - NOT listed here, since it
+# only activates if the USER has separately installed and configured
+# a translation plugin of their own choosing (e.g.
+# ovos-translate-plugin-nllb). This skill deliberately doesn't pull
+# in a specific translator as a hard dependency.

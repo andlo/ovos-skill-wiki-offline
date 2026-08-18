@@ -60,8 +60,12 @@ def test_handle_common_query_fr(skill):
     assert confidence == 0.8
 
 
-def test_handle_common_query_unsupported_lang_returns_none(skill):
-    # de-de/da-dk not covered yet - see DEVELOPMENT.md and issue #1
+def test_handle_common_query_unsupported_lang_without_translator_returns_none(skill):
+    # de-de isn't a SUPPORTED_LANGS dataset - falls through to ad-hoc
+    # translation (see test_translation.py), which returns None here
+    # since no translator plugin is configured in this test
+    # environment. See DEVELOPMENT.md "Ad-hoc translation for
+    # unsupported languages".
     assert skill.handle_common_query("wer war Charlie Chaplin", "de-de") is None
 
 
@@ -97,6 +101,23 @@ def test_can_answer_falls_back_to_skill_lang_when_missing(skill):
     message = MagicMock()
     message.data = {"utterances": ["who was Charlie Chaplin"]}  # no "lang" key
     assert skill.can_answer(message) is True
+
+
+def test_can_answer_unsupported_lang_true_for_question_mark(skill):
+    """See DEVELOPMENT.md 'Ad-hoc translation for unsupported
+    languages': can_answer() deliberately uses a cheap '?'-ending
+    heuristic for languages outside SUPPORTED_LANGS rather than
+    attempting a translation here, since this is called for every
+    utterance system-wide."""
+    message = MagicMock()
+    message.data = {"utterances": ["wer war Charlie Chaplin?"], "lang": "de-de"}
+    assert skill.can_answer(message) is True
+
+
+def test_can_answer_unsupported_lang_false_without_question_mark(skill):
+    message = MagicMock()
+    message.data = {"utterances": ["spiel etwas Musik"], "lang": "de-de"}
+    assert skill.can_answer(message) is False
 
 
 def test_handle_fallback_speaks_and_returns_true_on_match_en(skill):

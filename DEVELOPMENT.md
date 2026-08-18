@@ -235,14 +235,153 @@ German only has a smaller, differently-scoped cross-wiki list (not a
 full nested Level 1-5-equivalent structure at the ~10,000 scale);
 Danish has no confirmed equivalent at all. Using either natively
 would give a skill with much thinner, inconsistent coverage compared
-to en-us/es-es/fr-fr. Machine-translating this same title/summary
-dataset (recommended: `ovos-translate-plugin-nllb`, which runs
-locally - NOT `ovos-translate-plugin-server`, which calls a remote
-server by default and would make even this one-off data-build step
-depend on a third party's uptime) is the planned path for both - see
-[issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1)
-for the full scoping, including whether to also backfill Spanish's 3
-missing categories the same way as a smaller follow-on task.
+to en-us/es-es/fr-fr - see "Ad-hoc translation for unsupported
+languages" below for how these two (and any other language) are
+actually handled instead.
+
+## Ad-hoc translation for unsupported languages
+
+The original plan for German and Danish was the same as Spanish and
+French: pre-translate the full ~10,000-title/summary en-us dataset
+once, bundle the result as `data/summaries_de-de.json` /
+`data/summaries_da-dk.json`, same static-file pattern as every other
+language. That plan was abandoned partway through - ad-hoc, RUNTIME
+translation turned out to be strictly better on every axis that
+mattered:
+
+- **Only translates what's actually asked about.** Pre-translating
+  ~10,000 topics on the chance a few might get asked about someday is
+  a lot of wasted work compared to translating exactly the one topic
+  a real question needs, when it's needed.
+- **Works for ANY language, not just two.** A user with Italian,
+  Portuguese, or any other language configured gets the same
+  capability, with zero additional data or code changes on this
+  skill's part - support isn't limited to whichever languages
+  happened to get a pre-translation pass.
+- **No additional bundled data at all.** The two "supported" language
+  files (es-es, fr-fr) already add real weight to this package (see
+  "Why Level 4, not Level 5 or full Wikipedia"); adding two more
+  multi-MB files for German and Danish specifically would have made
+  that worse for no lasting benefit once ad-hoc translation existed
+  anyway.
+- **Still fully offline**, as long as the user's configured
+  translation plugin is itself local (e.g. `ovos-translate-plugin-nllb`,
+  which runs an NLLB-200 model via CTranslate2 with no network calls) -
+  the tradeoff is added latency (roughly 0.3-1s per sentence
+  translated, measured against the real NLLB model - see below), not
+  a networking dependency, PROVIDED the user's own configured plugin
+  is itself local. A user who configures a remote translation plugin
+  (`ovos-translate-plugin-server`) makes that tradeoff themselves;
+  this skill doesn't choose the plugin, it just uses whatever's
+  configured.
+
+### How it works
+
+`lookup_answer_via_translation(phrase, lang)` in `__init__.py`:
+
+1. Get the user's configured translator generically, via
+   `ovos_plugin_manager.language.OVOSLangTranslationFactory.create()`
+   - NOT hardcoded to NLLB or any specific plugin. Returns `None`
+   immediately (same "can't answer" contract as everywhere else in
+   this skill) if none is configured, or if it fails to load for any
+   reason (missing model, misconfigured, etc) - a broad `except
+   Exception` here is deliberate, not sloppy: a broken optional
+   fallback shouldn't crash the skill, it should just mean this
+   language isn't answerable right now.
+2. Translate the WHOLE PHRASE to en-us (the pivot language - our
+   largest, most complete dataset, and the one every other
+   language's data ultimately traces back to anyway).
+3. Run the translated phrase through the EXACT SAME `lookup_answer()`
+   pipeline en-us already uses. This is the key simplification that
+   makes "any language" tractable: no per-language question-prefix
+   list is needed for arbitrary languages, because by the time
+   `lookup_answer()` sees the phrase, it's already English.
+4. Translate the matched English answer back to the target language,
+   via `_translate_text()` - see next section for why this isn't a
+   single `.translate()` call.
+
+### A real bug caught during development: silent truncation
+
+The real NLLB plugin was tested by hand (not assumed to work) before
+committing to this design, using genuine multi-sentence extracts from
+the live dataset. A raw `translator.translate(long_multi_sentence_text,
+target, source)` call SILENTLY TRUNCATES the result to just the
+FIRST sentence - no error, no warning, just a shorter (wrong) answer.
+Confirmed this wasn't specific to the raw `NLLB200Translator` class -
+the same truncation happened through the generic, factory-created
+`OVOSLangTranslationFactory` interface too, so it's not something
+that goes away by using the "proper" OVOS abstraction instead of the
+plugin directly.
+
+The fix, `_translate_text()`: split the input on sentence boundaries
+first (`SENTENCE_SPLIT_RE`), translate each sentence with its own
+`.translate()` call, then rejoin with spaces. Slower (one call per
+sentence instead of one call total) but correct - confirmed against
+real multi-sentence Charlie Chaplin/Eiffel Tower extracts in both
+German and Danish during development, full answers came back intact
+in both directions.
+
+### Measured performance (real NLLB-200 600M int8 model, 8 CPU cores)
+
+- Model load: ~40s, once, on first use (not per-question).
+- Translation: roughly 0.3-1s per sentence in a batch context; a bit
+  slower for isolated single-sentence calls (~2s) due to per-call
+  overhead. A typical 2-4 sentence extract plus the question itself
+  means roughly 2-5 seconds of added latency for an ad-hoc-translated
+  answer, end to end. Not instant, but reasonable for a voice
+  question that would otherwise get no answer at all.
+
+### `can_answer()` deliberately does NOT translate
+
+`can_answer()` is called for EVERY utterance, system-wide (it's how
+`FallbackSkill` implementations respond to a broadcast "who can
+handle this" ping) - doing a translation round-trip there would add
+several seconds of latency to every single utterance on the device,
+not just the ones this skill is actually relevant to. For
+`SUPPORTED_LANGS`, `can_answer()` keeps using the existing free
+prefix-string check. For any other language, it falls back to a
+much weaker but free heuristic (does the utterance end in "?") - the
+real, translation-based check only happens in `handle_fallback()`,
+which is gated behind having passed this cheap filter first.
+`handle_common_query()` doesn't have this constraint (Common Query
+already invokes every competing skill's handler per query, so the
+cost is already being paid there regardless), so it attempts ad-hoc
+translation directly for any unsupported language.
+
+## Adding another language
+
+Two paths, depending on what exists for that language:
+
+**Path A - native Wikipedia vital-articles list** (like es-es, fr-fr).
+Use this if the target language's Wikipedia edition has ITS OWN
+comparable-scale curated list (check via Wikidata's cross-language
+page-mapping for `Wikipedia:Vital articles/Level/4`, not by
+assumption - German and Danish were checked this way and found NOT
+to have one, while Spanish and French did).
+1. Add an entry to `LANG_CONFIGS` in `data/build_data.py`: `domain`,
+   and either `"strategy": "master_list"` (a single bot-maintained
+   page listing every title, like en-us) or `"strategy":
+   "topic_subpages"` (the list is split across multiple topic pages,
+   like es-es/fr-fr) with the exact page names.
+2. **Verify every subpage actually exists before trusting an index
+   table's claimed article counts** - Spanish's own index claimed
+   100% completion for 3 categories that were never actually written
+   (see "The Spanish gap"). Use `action=query&list=allpages` with the
+   relevant prefix to get the REAL list of existing subpages, not the
+   index page's claims.
+3. Run `python3 data/build_data.py <lang-code>` - produces
+   `data/titles_<lang>.json` and `data/summaries_<lang>.json`.
+4. Add the language to `SUPPORTED_LANGS`, `QUESTION_PREFIXES`, and
+   `LEADING_ARTICLES` in `__init__.py`.
+5. Update `CREDITS.md` with the new source and any gaps found.
+
+**Path B - do nothing.** Any language NOT in `SUPPORTED_LANGS`
+already gets ad-hoc translation automatically (see above), as long as
+the user has a translation plugin configured. This is now the
+DEFAULT for new languages - Path A is only worth the extra bundled
+data and maintenance if a language gets asked about often enough
+that native-quality answers and zero added latency are worth it over
+the free, automatic ad-hoc fallback.
 
 ## `resolve_title()`: exact match, then "the "-stripping, then fuzzy
 
