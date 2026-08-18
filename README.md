@@ -3,7 +3,7 @@
 A fully offline general-knowledge fallback for OVOS - "who was
 Charlie Chaplin", "what is the Eiffel Tower", "tell me about tomato".
 An offline alternative to `ovos-skill-wikipedia`/`ovos-skill-ddg`/
-`ovos-skill-wolfie` for the ~9,000 topics covered by Wikipedia's own
+`ovos-skill-wolfie` for the ~10,000 topics covered by Wikipedia's own
 [Level 4 Vital Articles](https://en.wikipedia.org/wiki/Wikipedia:Vital_articles/Level/4)
 list - the subjects the Wikipedia community itself has curated as
 the most essential encyclopedia entries. No internet connection
@@ -44,7 +44,7 @@ design). See DEVELOPMENT.md for the reasoning.
 
 Every sibling skill in this project family (geography, geometry,
 convert, calculator) uses fixed Padatious intents as the primary
-path. This one doesn't - ~9,000 arbitrary proper nouns don't fit a
+path. This one doesn't - ~10,000 arbitrary proper nouns don't fit a
 bounded intent-slot vocabulary the way 194 countries or 24 geometry
 terms do. Instead this skill competes via Common Query (alongside
 Wikipedia/DDG/Wolfram, when the platform routes a question there) and
@@ -73,7 +73,7 @@ Kiwix/ZIM, DBpedia, or Wikipedia's own larger vital-article levels:
 - **A snapshot, not a live mirror** - `data/summaries.json` reflects
   Wikipedia as of whenever `data/build_data.py` was last run, not the
   current live article.
-- **Scope is ~9,000 topics** (Wikipedia's Level 4 Vital Articles) -
+- **Scope is ~10,000 topics** (Wikipedia's Level 4 Vital Articles) -
   Level 5 (50,000 articles) exists as a natural future extension
   (Level 4 is a strict subset), not built in v1.
 

@@ -80,13 +80,13 @@ Considered three options at very different scales:
   project's other datasets. Level 5 (50,000 articles) was estimated
   at ~25-40MB - still reasonable, but has no ready-made summary
   dataset and would need building the title list from 11 category
-  pages split across further subpages. Level 4 (10,000 articles, in
-  practice 9,033 unique) is a strict subset of Level 5 (the levels
-  are nested), has a clean category-based title list (see
-  `CREDITS.md`), and is small enough that the full summaries JSON is
-  well under what any other approach could offer at a comparable
-  size. Starting here doesn't foreclose extending to the rest of
-  Level 5 later - nothing built for Level 4 needs to be redone.
+  pages split across further subpages. Level 4 (nominally 10,000
+  articles, in practice 10,033 per Wikipedia's own bot-maintained
+  count) is a strict subset of Level 5 (the levels are nested), and
+  the final bundled data is ~6.3MB - well under what any other
+  approach could offer at a comparable size. Starting here doesn't
+  foreclose extending to the rest of Level 5 later - nothing built
+  for Level 4 needs to be redone.
 
 A candidate ready-made Level 4 summary dataset was found on GitHub
 but explicitly NOT used: no LICENSE file, 0 stars, single
@@ -95,6 +95,35 @@ a stable or clearly-licensed enough source to depend on for a
 published skill, even though the underlying Wikipedia content it's
 built from is itself openly licensed. `data/build_data.py` fetches
 directly from Wikipedia's own official APIs instead - see `CREDITS.md`.
+
+## Why the master list, not category tags
+
+The first working version of `data/build_data.py` built its title
+list purely from the 11 topic subcategories (each tagged on an
+article's own Talk page). It worked, tests passed, real questions
+got real answers - but a manual spot-check with a few of the exact
+questions this skill was designed for ("who was Charlie Chaplin",
+"what is photosynthesis") turned up two silent gaps: both topics
+were completely absent from the 9,033-title category-based list,
+despite being unambiguously "vital" by any reasonable definition.
+
+Checking Wikipedia's OWN separate master list page ("List of all
+level 1-4 vital articles", bot-maintained, page title uses an en-dash
+in "1-4") confirmed both ARE genuinely part of Level 4 - the category
+tags and the master list are two parallel tracking mechanisms
+Wikipedia itself doesn't keep perfectly in sync (the master list's
+own header calls itself "a temporary solution" pending an internal
+Wikipedia infrastructure fix). The master list's wikitext turned out
+to be simple, clean `[[Article]]`-link text - switching to it as the
+title source went from 9,033 to 10,033 titles, closing the gap
+without needing to abandon the category data entirely (it's kept as
+a secondary, best-effort topic-label enrichment - see `CREDITS.md`).
+
+The lesson generalizing beyond this one skill: passing tests and a
+few working example questions aren't the same as complete data -
+worth spot-checking specifically the examples that MOTIVATED building
+something in the first place, not just examples that are convenient
+to construct after the fact.
 
 ## Single-entity lookup, not relational reasoning
 

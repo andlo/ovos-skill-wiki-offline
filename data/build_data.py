@@ -2,10 +2,30 @@
 One-off data pipeline for ovos-skill-wiki-offline.
 
 Fetches the ~10,000 titles in Wikipedia's "Level 4 Vital Articles"
-list (via the 11 official topic subcategories, each tagged on the
-article's own Talk page - a standard WikiProject assessment
-convention, not a reader-facing category), then fetches a short
-summary for each title via Wikipedia's own official REST summary API.
+list, then fetches a short summary for each title via Wikipedia's own
+official REST summary API.
+
+Title source: Wikipedia's own bot-maintained master list page
+("Wikipedia:Vital articles/List of all level 1-4 vital articles" -
+note the page title uses an en-dash, not a hyphen, in "1-4"), parsed
+from its wikitext. This REPLACES an earlier version of this script
+that built the title list from the 11 topic subcategories (tagged on
+each article's Talk page) - that approach turned out to be
+INCOMPLETE: spot-checking found "Photosynthesis" (confirmed present
+in the master list) missing from the category-based extraction
+entirely. Wikipedia's own category-tag tracking and its master list
+page are two parallel, imperfectly-synced mechanisms (the master
+list's own header explicitly calls itself "a temporary solution until
+phab:T117122 is resolved") - the master list is the authoritative,
+complete one. See DEVELOPMENT.md "Why the master list, not category
+tags" for the full story, including the concrete Photosynthesis gap
+that caught this.
+
+Topic labels (Arts/Geography/People/etc, used only for informational
+grouping, not required for the skill to function) are still sourced
+from the 11 category pages as a best-effort enrichment - any master-
+list title not found in a category is labeled "Uncategorized" rather
+than dropped.
 
 Not shipped with the skill - run once, output committed as static
 JSON. Same convention as ovos-skill-geography's data/build_data.py.
@@ -15,6 +35,7 @@ Politely rate-limited (0.5s between summary requests) with retry-on-
 interruption doesn't lose progress.
 """
 import json
+import re
 import time
 import sys
 from pathlib import Path
@@ -30,6 +51,7 @@ TITLES_FILE = OUTPUT_DIR / "titles.json"
 SUMMARIES_FILE = OUTPUT_DIR / "summaries.json"
 PROGRESS_FILE = OUTPUT_DIR / "progress.log"
 
+MASTER_LIST_PAGE = "Wikipedia:Vital articles/List of all level 1\u20134 vital articles"
 TOPIC_CATEGORY = "Category:Wikipedia level-4 vital articles by topic"
 
 REQUEST_DELAY_SECONDS = 0.5
@@ -40,6 +62,33 @@ def log(msg):
     print(msg, flush=True)
     with open(PROGRESS_FILE, "a", encoding="utf-8") as f:
         f.write(msg + "\n")
+
+
+WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)")
+
+
+def get_master_list_titles():
+    """The authoritative, complete, bot-maintained list - see module
+    docstring for why this replaced the category-based approach."""
+    r = requests.get(API_URL, params={
+        "action": "parse", "page": MASTER_LIST_PAGE,
+        "prop": "wikitext", "format": "json",
+    }, headers=HEADERS, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    text = data["parse"]["wikitext"]["*"]
+
+    marker = "<!-- report begin -->"
+    idx = text.find(marker)
+    body = text[idx + len(marker):] if idx != -1 else text
+
+    titles = []
+    for m in WIKILINK_RE.finditer(body):
+        title = m.group(1).strip()
+        if title and not title.startswith(("Wikipedia:", "Category:", "Template:",
+                                            "User:", "Special:", "File:", "Help:")):
+            titles.append(title)
+    return titles
 
 
 def get_topic_subcategories():
@@ -87,21 +136,34 @@ def build_title_list():
         with open(TITLES_FILE, encoding="utf-8") as f:
             return json.load(f)
 
-    log("Fetching the 11 topic subcategories...")
-    subcats = get_topic_subcategories()
-    log(f"Found {len(subcats)} subcategories: {subcats}")
+    log("Fetching the master vital-articles list (authoritative title source)...")
+    master_titles = get_master_list_titles()
+    log(f"Master list: {len(master_titles)} titles")
 
-    all_titles = {}  # title -> topic (first one wins if duplicate)
+    log("Fetching the 11 topic subcategories (best-effort topic labels only)...")
+    subcats = get_topic_subcategories()
+    topic_of = {}  # title -> topic, from category tags (may not cover everything)
     for subcat in subcats:
         topic = subcat.split(" in ", 1)[-1]
         titles = get_articles_in_subcategory(subcat)
         log(f"  {subcat}: {len(titles)} articles")
         for t in titles:
-            if t not in all_titles:
-                all_titles[t] = topic
+            if t not in topic_of:
+                topic_of[t] = topic
         time.sleep(0.5)
 
-    log(f"Total unique titles across all topics: {len(all_titles)}")
+    all_titles = {}
+    uncategorized = 0
+    for title in master_titles:
+        if title not in all_titles:
+            if title in topic_of:
+                all_titles[title] = topic_of[title]
+            else:
+                all_titles[title] = "Uncategorized"
+                uncategorized += 1
+
+    log(f"Total unique titles from master list: {len(all_titles)} "
+        f"({uncategorized} without a category-tag topic label)")
     with open(TITLES_FILE, "w", encoding="utf-8") as f:
         json.dump(all_titles, f, ensure_ascii=False, indent=2)
     return all_titles
