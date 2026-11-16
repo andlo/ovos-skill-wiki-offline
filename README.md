@@ -7,8 +7,8 @@ An offline alternative to `ovos-skill-wikipedia`/`ovos-skill-ddg`/
 Wikipedia "Level 4 Vital Articles" equivalent - the subjects that
 language's Wikipedia community itself has curated as the most
 essential encyclopedia entries. No internet connection needed at
-runtime for the natively-supported languages. **English, Spanish, and
-French are natively supported; any other language works too via
+runtime for the natively-supported languages. **English, Spanish, French and
+Danish are natively supported; any other language works too via
 on-demand translation - see [Language support](#language-support)
 below.**
 
@@ -35,7 +35,7 @@ below.**
 "cuéntame sobre el Tomate"        (Spanish)
 "qui était Charlie Chaplin"       (French)
 "parle-moi de la Tomate"          (French)
-"hvem var Charlie Chaplin"        (Danish, via translation - see below)
+"hvem var Charlie Chaplin"        (Danish)
 "wer war Charlie Chaplin"         (German, via translation - see below)
 ```
 
@@ -57,11 +57,12 @@ design). See DEVELOPMENT.md for the reasoning.
 | English (`en-us`) | Native, bundled data | ~10,000 topics |
 | Spanish (`es-es`) | Native, bundled data | ~6,200 topics - 3 of 11 topic categories are missing from the source list itself, see [Known limitations](#known-limitations) |
 | French (`fr-fr`) | Native, bundled data | ~10,000 topics |
+| Danish (`da-dk`) | Native, bundled data | ~8,300 topics: the English list's topics that Danish Wikipedia has its own article on, found through Wikipedia's interlanguage links (see below) |
 | Any other language | On-demand translation | Works automatically, no bundled data - **requires a translation plugin to be installed and configured, see below** |
 
 The natively-supported languages need nothing beyond `pip install
 ovos-skill-wiki-offline` - the data ships with the skill. For every
-other language (German and Danish included), this skill translates
+other language (German included), this skill translates
 the question and answer on the fly, using whatever OVOS translation
 plugin is configured on the device - it doesn't ship or require one
 itself. Recommended:
@@ -73,6 +74,16 @@ the setup steps. Translated answers take a few extra seconds
 (typically 2-5s) compared to a native-language answer - see
 DEVELOPMENT.md "Ad-hoc translation for unsupported languages" for
 measured performance and the full design reasoning.
+
+### Danish: Danish Wikipedia's own text, through interlanguage links
+
+Danish Wikipedia has no vital-articles list of its own, so `data/build_data.py`
+(strategy `langlinks`) follows the ~10,000 English Level 4 titles through
+Wikipedia's interlanguage links to Danish Wikipedia's own article on each
+topic, and fetches its summary. 8,295 of them have one. The answers are
+natively written Danish, not machine translation, and need no translator at
+all: Danish works fully offline. German can be built the same way
+(`python3 data/build_data.py de-de`).
 
 ## A Common Query + Fallback skill, not a fixed intent
 
