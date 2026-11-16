@@ -24,11 +24,13 @@ Category:, Template:, etc). Verified by hand against the actual
 fetched wikitext for each language before writing this - not assumed
 to generalize from English's format.
 
-de-de and da-dk are NOT covered by this script - neither has a
-confirmed comparable-scale native vital-articles list (German only
-has a much smaller list; Danish has no confirmed equivalent at all).
-See github.com/andlo/ovos-skill-wiki-offline/issues/1 for the
-machine-translation approach planned for those two instead.
+- "langlinks" (da-dk, de-de): neither has a comparable native
+  vital-articles list (German only a much smaller one, Danish none),
+  so the English master list is followed through Wikipedia's
+  interlanguage links to each edition's own article on the same
+  topic. The summaries are that edition's own text, not machine
+  translation; topics it has no article on are left out. (This
+  replaces the machine-translation plan in issue #1.)
 
 Usage: python3 build_data.py <lang-code>
 e.g.:  python3 build_data.py es-es
@@ -150,6 +152,45 @@ LANG_CONFIGS = {
         },
     },
 }
+
+
+# Languages without a vital-articles list of their own: the English Level 4
+# list, followed through Wikipedia's interlanguage links ("langlinks") to
+# that language edition's own article on the same subject. The summaries
+# are then that edition's own, natively written text - not machine
+# translation - for every topic the edition has an article on.
+LANG_CONFIGS["da-dk"] = {
+    "domain": "da.wikipedia.org",
+    "strategy": "langlinks",
+    "source_lang": "en-us",
+    "langlink_code": "da",
+}
+LANG_CONFIGS["de-de"] = {
+    "domain": "de.wikipedia.org",
+    "strategy": "langlinks",
+    "source_lang": "en-us",
+    "langlink_code": "de",
+}
+
+
+def get_langlinks(source_domain, titles, code):
+    """{source title: title in language `code`} for up to 50 titles, from
+    the source edition's interlanguage links. Follows redirects and title
+    normalisation, so the map is keyed by the titles as given."""
+    r = requests.get(f"https://{source_domain}/w/api.php", params={
+        "action": "query", "prop": "langlinks", "lllang": code, "lllimit": "max",
+        "titles": "|".join(titles), "redirects": 1, "format": "json", "formatversion": 2,
+    }, headers=make_headers(), timeout=30)
+    r.raise_for_status()
+    q = r.json().get("query", {})
+    # given title -> the page title the links are listed under
+    alias = {t: t for t in titles}
+    for step in ("normalized", "redirects"):
+        moved = {m["from"]: m["to"] for m in q.get(step, [])}
+        alias = {t: moved.get(a, a) for t, a in alias.items()}
+    linked = {page["title"]: page["langlinks"][0]["title"]
+              for page in q.get("pages", []) if page.get("langlinks")}
+    return {t: linked[a] for t, a in alias.items() if a in linked}
 
 
 def make_headers():
@@ -283,6 +324,35 @@ def build_title_list(lang, progress_file, titles_file):
                 if t not in all_titles:
                     all_titles[t] = topic
             time.sleep(0.5)
+
+    elif config["strategy"] == "langlinks":
+        source_lang = config["source_lang"]
+        source_file = OUTPUT_DIR / f"titles_{source_lang}.json"
+        with open(source_file, encoding="utf-8") as f:
+            source_titles = json.load(f)   # title -> topic
+        source_domain = LANG_CONFIGS[source_lang]["domain"]
+        names = list(source_titles)
+        log(progress_file, f"[{lang}] Following {len(names)} {source_lang} titles "
+                           f"to {config['langlink_code']}.wikipedia...")
+        for i in range(0, len(names), 50):
+            batch = names[i:i + 50]
+            for attempt in range(MAX_RETRIES):
+                try:
+                    links = with_hard_timeout(60, get_langlinks, source_domain, batch,
+                                              config["langlink_code"])
+                    break
+                except (requests.RequestException, HardTimeout) as e:
+                    time.sleep(2 ** attempt)
+            else:
+                raise RuntimeError(f"langlinks failed for titles {i}-{i + 50}")
+            for title, linked in links.items():
+                # the topic labels stay the source list's (English)
+                all_titles.setdefault(linked, source_titles[title])
+            if i % 1000 == 0:
+                log(progress_file, f"  {i + len(batch)}/{len(names)}: {len(all_titles)} found")
+            time.sleep(REQUEST_DELAY_SECONDS)
+        log(progress_file, f"[{lang}] {len(all_titles)} of {len(names)} topics have a "
+                           f"{config['langlink_code']} article")
 
     else:
         raise ValueError(f"Unknown strategy for {lang}: {config['strategy']}")
