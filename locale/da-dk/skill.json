@@ -6,7 +6,7 @@
   "license": "GPL-3.0-or-later",
   "author": "andlo",
   "name": "Wiki Offline",
-  "description": "Offline opslag i almen viden, der dækker Wikipedias ~10.000 vitale artikler. Engelsk, spansk og fransk er indbygget; alle andre sprog besvares via offline-oversættelse. Ingen internetforbindelse nødvendig.",
+  "description": "Offline opslag i almen viden: de ~8.300 emner fra Wikipedias vitale artikler, som dansk Wikipedia har sin egen artikel om, på dansk. Ingen internetforbindelse nødvendig.",
   "examples": [
     "hvad er fotosyntese",
     "hvem var Marie Curie",

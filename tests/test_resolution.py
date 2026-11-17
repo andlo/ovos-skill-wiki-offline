@@ -39,6 +39,13 @@ def test_strip_question_prefix_fr(skill):
     assert _strip_question_prefix("parle-moi de la Tomate", "fr-fr") == "la Tomate"
 
 
+def test_strip_question_prefix_da(skill):
+    from wiki_offline_skill import _strip_question_prefix
+    assert _strip_question_prefix("hvem var Charlie Chaplin", "da-dk") == "Charlie Chaplin"
+    assert _strip_question_prefix("fortæl mig om Eiffeltårnet", "da-dk") == "Eiffeltårnet"
+    assert _strip_question_prefix("hvad er fotosyntese", "da-dk") == "fotosyntese"
+
+
 def test_strip_question_prefix_unsupported_lang_returns_none(skill):
     from wiki_offline_skill import _strip_question_prefix
     assert _strip_question_prefix("who was Charlie Chaplin", "de-de") is None

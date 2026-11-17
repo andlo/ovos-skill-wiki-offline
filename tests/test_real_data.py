@@ -9,6 +9,9 @@ switching from category-tag-based extraction to Wikipedia's own
 master list - see DEVELOPMENT.md "Why the master list, not category
 tags".
 
+da-dk: built through the English list's interlanguage links, so it has
+the topics Danish Wikipedia has its own article on (about 4 in 5).
+
 es-es: Tomate/Fotosíntesis are EXPECTED absent (the real, documented
 "Spanish gap" - see DEVELOPMENT.md), tested as an explicit assertion
 of the known gap rather than treated as a bug.
@@ -119,3 +122,22 @@ def test_fr_tomate_present(fr_summaries):
 def test_fr_tour_eiffel_present(fr_summaries):
     assert "Tour Eiffel" in fr_summaries
     assert "Paris" in fr_summaries["Tour Eiffel"]["extract"]
+
+
+@pytest.fixture(scope="module")
+def da_summaries():
+    data = _load("da-dk")
+    if data is None:
+        pytest.skip("data/summaries_da-dk.json not present")
+    return data
+
+
+def test_da_has_most_of_the_english_topics(da_summaries):
+    # ~10,000 English topics; Danish Wikipedia has an article on most
+    assert len(da_summaries) > 7000
+
+
+def test_da_summaries_are_danish(da_summaries):
+    for title in ("Charlie Chaplin", "Fotosyntese", "Eiffeltårnet", "Marie Curie"):
+        assert title in da_summaries, title
+    assert "fotosyntese" in da_summaries["Fotosyntese"]["extract"].lower()

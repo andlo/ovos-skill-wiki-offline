@@ -71,7 +71,7 @@ DATA_DIR = SKILL_ROOT / "data"
 
 FUZZY_MATCH_THRESHOLD = 0.85
 
-SUPPORTED_LANGS = ("en-us", "es-es", "fr-fr")
+SUPPORTED_LANGS = ("en-us", "es-es", "fr-fr", "da-dk")
 TRANSLATION_PIVOT_LANG = "en-us"
 
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
@@ -113,6 +113,13 @@ QUESTION_PREFIXES = {
         "cuéntame sobre ", "háblame de ", "háblame sobre ",
         "qué sabes sobre ", "qué sabes de ",
     ],
+    "da-dk": [
+        "hvem er ", "hvem var ", "hvem er det ",
+        "hvad er ", "hvad var ", "hvad er en ", "hvad er et ",
+        "hvor er ", "hvor ligger ", "hvor finder man ",
+        "fortæl mig om ", "fortæl om ", "fortæl mig lidt om ",
+        "hvad ved du om ",
+    ],
     "fr-fr": [
         "qui est ", "qui était ", "qui sont ",
         "qu'est-ce que ", "qu'est-ce qu'", "qu'est-ce qui est ",
@@ -129,6 +136,9 @@ LEADING_ARTICLES = {
     "en-us": ["the "],
     "es-es": ["el ", "la ", "los ", "las "],
     "fr-fr": ["le ", "la ", "les ", "l'"],
+    # Danish puts the article at the end of the noun ("tomaten"); the
+    # free-standing ones are rare before a title, but STT and people say them
+    "da-dk": ["en ", "et ", "den ", "det "],
 }
 
 
