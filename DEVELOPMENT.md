@@ -63,7 +63,7 @@ before the generic `fallback-unknown` "I don't know" catch-all.
 Considered three options at very different scales:
 
 - **Kiwix/ZIM** (a full or partial offline Wikipedia archive via
-  `python-libzim`, GPLv3+): technically clean (license-compatible,
+  `python-libzim`, Apache-2.0+): technically clean (license-compatible,
   mature tooling), but even a "mini" scope Simple Wikipedia ZIM is
   hundreds of MB to low GB - too large to bundle in a PyPI package,
   would need a separate download step and settings-driven file path,
@@ -151,7 +151,7 @@ comparable ~10,000-topic scale to English's Level 4 - unlike German
 (only a much smaller cross-wiki list) and Danish (no confirmed
 equivalent at all). See "The Spanish gap" and "Why not German or
 Danish yet" below, and
-[issue #1](https://github.com/andlo/ovos-skill-wiki-offline/issues/1)
+[issue #1](https://github.com/emkay-voice/ovos-skill-wiki-offline/issues/1)
 for the machine-translation approach planned for German/Danish.
 
 `data/build_data.py` now takes a language argument
@@ -477,11 +477,10 @@ question actually asked, which is worse than just not answering.
 
 ## Setup
 ```bash
-git clone https://github.com/andlo/ovos-skill-wiki-offline.git
+git clone https://github.com/emkay-voice/ovos-skill-wiki-offline.git
 cd ovos-skill-wiki-offline
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -r requirements-test.txt
+pip install -e ".[test]"
 ```
 
 ## Running tests
@@ -502,8 +501,23 @@ errors") means a single bad title gets skipped and retried on the
 next run rather than blocking the whole pipeline.
 
 ## Versioning
-`0.0.X` (patch only) until told otherwise, matching the rest of this
-project family.
+
+The version is `version` in `pyproject.toml`: `X.Y.Z`, or `X.Y.ZaN` for an
+alpha (Emkay follows OpenVoiceOS' alpha channel).
+
+## Releasing
+
+Releases are tag-triggered (`v*`), the same way as in the other Emkay repos:
+```bash
+# bump version in pyproject.toml
+git commit -am "vX.Y.ZaN"
+git tag vX.Y.ZaN
+git push && git push --tags
+```
+`.github/workflows/publish.yml` runs the tests and builds the wheel on every
+push; on a tag it publishes to PyPI (trusted publishing, environment `pypi`)
+and makes a GitHub release with the commits since the previous tag as notes.
+Alpha tags become pre-releases.
 
 ## Style / conventions
 Same conventions as the rest of this project family - see

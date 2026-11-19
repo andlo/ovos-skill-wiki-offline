@@ -12,7 +12,10 @@ Danish are natively supported; any other language works too via
 on-demand translation - see [Language support](#language-support)
 below.**
 
-[![Tests](https://github.com/andlo/ovos-skill-wiki-offline/actions/workflows/test.yml/badge.svg)](https://github.com/andlo/ovos-skill-wiki-offline/actions/workflows/test.yml)
+It is part of [Emkay](https://github.com/emkay-voice/emkay), OpenVoiceOS in
+the browser, and works on any [OpenVoiceOS](https://openvoiceos.org).
+
+[![Build](https://github.com/emkay-voice/ovos-skill-wiki-offline/actions/workflows/publish.yml/badge.svg)](https://github.com/emkay-voice/ovos-skill-wiki-offline/actions/workflows/publish.yml)
 [![PyPI version](https://img.shields.io/pypi/v/ovos-skill-wiki-offline.svg)](https://pypi.org/project/ovos-skill-wiki-offline/)
 
 - [Usage](#usage)

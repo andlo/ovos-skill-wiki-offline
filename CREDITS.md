@@ -56,7 +56,7 @@ live request. Per CC BY-SA's attribution requirement: content
 sourced from Wikipedia, © Wikipedia contributors, CC BY-SA 4.0.
 
 This does NOT extend to the skill's own code, which remains
-GPL-3.0-or-later per `LICENSE`.
+Apache-2.0 per `LICENSE`.
 
 ## A partial-translation note on the Spanish data
 
