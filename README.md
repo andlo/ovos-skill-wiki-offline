@@ -133,6 +133,10 @@ Kiwix/ZIM, DBpedia, or Wikipedia's own larger vital-article levels:
   (50,000 articles) exists as a natural future extension (Level 4 is
   a strict subset), not built in v1.
 
+## On a screen
+
+On a device with a screen (Emkay, a Mark II, any OVOS GUI) the answer is shown as text under the article's title, so it can be read along, and the screen is released after a minute. Answers translated on the fly show the text alone. There are no pictures: nothing is bundled or fetched for the screen, so the skill works offline exactly as before.
+
 ## Install
 
 ```bash
