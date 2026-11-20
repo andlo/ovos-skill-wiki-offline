@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ovos-skill-wiki-offline"
-version = "0.2.0a1"
+version = "0.2.0"
 description = "Offline general-knowledge lookup covering Wikipedia's ~10,000 Level 4 Vital Articles. English, Spanish, and French are native; any other language is answered via on-demand offline translation. No internet connection needed."
 readme = "README.md"
 license = {text = "Apache-2.0"}
