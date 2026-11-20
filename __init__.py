@@ -59,6 +59,10 @@ SUPPORTED_LANGS = ("en-us", "es-es", "fr-fr", "da-dk")
 TRANSLATION_PIVOT_LANG = "en-us"
 
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+# On a screen (issue #4) the answer is shown as text with the article's
+# title, so it can be read along, and released after this many seconds.
+# Text only: no pictures are bundled, so offline keeps working the same.
+SCREEN_SECONDS = 60
 
 
 def _load_summaries(lang):
@@ -163,18 +167,25 @@ def resolve_title(subject, lang):
     return None
 
 
-def lookup_answer(phrase, lang):
+def lookup_entry(phrase, lang):
     """Full pipeline: strip a question prefix, resolve the remaining
-    subject against this language's title index, return the short
-    spoken answer (str) or None. Shared by both the Common Query and
-    fallback entry points below - one implementation, two triggers."""
+    subject against this language's title index, return the article's
+    (title, short answer) or None."""
     subject = _strip_question_prefix(phrase, lang)
     if subject is None:
         return None
     title = resolve_title(subject, lang)
     if title is None:
         return None
-    return SUMMARIES_BY_LANG[lang][title]["extract"]
+    return title, SUMMARIES_BY_LANG[lang][title]["extract"]
+
+
+def lookup_answer(phrase, lang):
+    """The short spoken answer (str) or None. Shared by both the Common
+    Query and fallback entry points below - one implementation, two
+    triggers."""
+    entry = lookup_entry(phrase, lang)
+    return entry[1] if entry else None
 
 
 _translator_cache = {}  # lazy singleton - see _get_translator()
@@ -302,7 +313,24 @@ class WikiOffline(FallbackSkill):
             return _strip_question_prefix(utterances[0], lang) is not None
         return _translator_configured()
 
-    @common_query()
+    def _show_answer(self, title, text):
+        """The answer as text under the article's title. Answers
+        translated on the fly have no title in the asked language,
+        so they show the text alone."""
+        self.gui.show_text(text, title=title, override_idle=SCREEN_SECONDS)
+
+    def _title_for(self, phrase, lang):
+        if lang not in SUPPORTED_LANGS:
+            return None
+        entry = lookup_entry(phrase, lang)
+        return entry[0] if entry else None
+
+    def _cq_selected(self, phrase, answer, lang):
+        """Common Query picked this skill's answer: show it."""
+        lang = (lang or self.lang).lower()
+        self._show_answer(self._title_for(phrase, lang), answer)
+
+    @common_query(callback=_cq_selected)
     def handle_common_query(self, phrase, lang):
         """See DEVELOPMENT.md 'Why Common Query + Fallback' - this
         lets the skill compete on equal footing with Wikipedia/DDG/
@@ -339,5 +367,6 @@ class WikiOffline(FallbackSkill):
             answer = lookup_answer_via_translation(utterances[0], lang)
         if answer is None:
             return False
+        self._show_answer(self._title_for(utterances[0], lang), answer)
         self.speak(answer)
         return True

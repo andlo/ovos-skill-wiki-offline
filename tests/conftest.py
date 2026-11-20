@@ -91,6 +91,7 @@ def skill(monkeypatch):
     monkeypatch.setattr(WikiOffline, "lang", "en-us", raising=False)
     s.res_dir = str(Path(__file__).resolve().parents[1])
     s._lang_resources = {}
+    s.gui = MagicMock()
 
     # Point the module-level data at our small fixture set, not
     # whatever data/summaries_<lang>.json actually contains on disk.
